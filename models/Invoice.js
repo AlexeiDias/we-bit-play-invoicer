@@ -1,27 +1,49 @@
 const mongoose = require('mongoose');
-const { Schema } = mongoose;
 
-const invoiceSchema = new Schema({
+const invoiceSchema = new mongoose.Schema({
   invoiceNumber: Number,
-  date: { type: Date, default: Date.now },
+
   client: {
     name: String,
     business: String,
     address: String,
     phone: String,
-    email: String,
+    email: String
   },
+
   hourlyRate: Number,
-  workLogs: [{
-    description: String,
-    hours: Number
-  }],
-  expenses: [{
-    description: String,
-    amount: Number
-  }],
+
+  workLogs: [
+    {
+      description: String,
+      hours: Number
+    }
+  ],
+
+  // ✅ Insert serviceBreakdown here:
+  serviceBreakdown: {
+    setupStart: String,
+    depoStart: String,
+    depoEnd: String,
+    breakdownEnd: String,
+    lunchBreak: String,
+    totalHours: Number
+  },
+
+  expenses: [
+    {
+      description: String,
+      amount: Number
+    }
+  ],
+
   notes: String,
-  total: Number
+  subtitle: String,
+  total: Number,
+  date: {
+    type: Date,
+    default: Date.now
+  }
 });
 
 module.exports = mongoose.model('Invoice', invoiceSchema);

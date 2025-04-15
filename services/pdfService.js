@@ -25,6 +25,18 @@ doc
 .fillColor('#333')
 .text(businessName.toUpperCase(), 50, 50, { align: 'left' }); // TEXT LOGO
 
+if (invoice.subtitle && invoice.subtitle.trim() !== '') {
+  doc
+    .moveDown(0.25)
+    .fontSize(14)
+    .fillColor('#666')
+    .text(invoice.subtitle, {
+      align: 'center',
+      oblique: true
+    });
+}
+
+
 doc
 .fontSize(10)
 .fillColor('black')
@@ -50,6 +62,38 @@ doc.moveDown();
   doc.text(`${invoice.client.address}`);
   doc.text(`Phone: ${invoice.client.phone}`);
   doc.text(`Email: ${invoice.client.email}`);
+
+  // Subtitle (now appears before Work Log)
+if (invoice.subtitle && invoice.subtitle.trim() !== '') {
+  doc.moveDown();
+  doc
+    .fontSize(14)
+    .fillColor('#444')
+    .text(invoice.subtitle, {
+      align: 'left',
+      oblique: true
+    });
+}
+
+// 🧼 Skip Breakdown Section if Canceled
+if (
+  invoice.serviceBreakdown &&
+  invoice.workLogs.some(w => w.description === 'Total Deposition Time')
+) {
+  const sb = invoice.serviceBreakdown;
+
+  doc.moveDown();
+  doc.fontSize(16).text('Service Breakdown');
+  doc.fontSize(12)
+    .text(`Setup Start: ${sb.setupStart}`)
+    .text(`Deposition Start: ${sb.depoStart}`)
+    .text(`Deposition End: ${sb.depoEnd}`)
+    .text(`Breakdown End: ${sb.breakdownEnd}`)
+    .text(`Lunch Break: ${sb.lunchBreak} hours`)
+    .text(`Total Deposition Duration: ${sb.totalHours} hours`);
+}
+
+
 
   // Work Logs
   doc.moveDown();
