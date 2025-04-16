@@ -149,14 +149,26 @@ async function createInvoice() {
 
   generateInvoicePDF(invoice);
 
-  const pdfPath = path.join(__dirname, '..', 'exports', `Invoice-${String(invoice.invoiceNumber).padStart(5, '0')}.pdf`);
+const pdfPath = path.join(__dirname, '..', 'exports', `Invoice-${String(invoice.invoiceNumber).padStart(5, '0')}.pdf`);
+
+const { shouldEmail } = await inquirer.prompt({
+  type: 'confirm',
+  name: 'shouldEmail',
+  message: 'Do you want to email this invoice now?'
+});
+
+if (shouldEmail) {
   try {
     console.log('📧 Attempting to send invoice...');
     await sendInvoiceEmail(invoice, pdfPath);
     console.log('✅ Email sent!');
   } catch (err) {
-    console.error('❌ Email failed:', err);
+    console.error('❌ Email failed:', err.message);
   }
+} else {
+  console.log('📥 Invoice ready but email not sent. You can manually send it later.');
+}
+
 }
 
 // other functions (unchanged)
