@@ -1,11 +1,20 @@
 require('dotenv').config();
-const connectDB = require('./db/connect');
+
+const mongoose = require('mongoose');
 const mainMenu = require('./cli/mainMenu');
+const { checkInitialSetup } = require('./services/initService');
 
-(async () => {
-  console.log("🔌 Connecting to MongoDB...");
-  await connectDB();
+async function startApp() {
+  console.log('🔌 Connecting to MongoDB...');
+  await mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  });
+  console.log('✅ MongoDB connected');
 
-  console.log("📋 Launching Main Menu...");
+  await checkInitialSetup(); // 🧠 Run first-time setup checks
+
   await mainMenu();
-})();
+}
+
+startApp();

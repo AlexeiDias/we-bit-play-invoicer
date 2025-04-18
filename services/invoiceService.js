@@ -5,18 +5,43 @@ const { getOrCreateClient } = require('./clientService');
 const { getNextInvoiceNumber } = require('../utils/counter');
 const { generateInvoicePDF } = require('./pdfService');
 const { sendInvoiceEmail } = require('./emailService');
+const { loadSettings } = require('./settingsService');
+const { exec } = require('child_process');
+
+
+
+
 
 async function createInvoice() {
   console.log('\n🧾 Creating New Invoice...\n');
 
-  const client = await getOrCreateClient();
+  
+  
 
-  const { hourlyRate } = await inquirer.prompt({
-    name: 'hourlyRate',
-    message: 'Your hourly rate (USD):',
-    validate: val => !isNaN(val) && val > 0
+  
+  const client = await getOrCreateClient();
+const settings = loadSettings();
+
+if (!settings) {
+  console.log('⚠️ Could not load settings. Please go to Settings.');
+  return;
+}
+
+
+  // 💼 3. Job Type
+  const { jobType } = await inquirer.prompt({
+    type: 'list',
+    name: 'jobType',
+    message: '📍 Was the job in-person or remote?',
+    choices: ['In-Person', 'Remote']
   });
 
+  const hourlyRate =
+    jobType === 'In-Person'
+      ? parseFloat(settings.hourlyInPerson)
+      : parseFloat(settings.hourlyRemote);
+
+  // ❌ 4. Cancel Check
   const { isCanceled } = await inquirer.prompt({
     type: 'confirm',
     name: 'isCanceled',
@@ -27,9 +52,12 @@ async function createInvoice() {
   let serviceBreakdown = {};
 
   if (isCanceled) {
-    const cancelFee = parseFloat(hourlyRate) * 3;
-    workLogs.push({ description: 'Job Cancelation Fee', hours: 3 });
-    console.log(`⚠️ Cancelation fee applied: $${cancelFee.toFixed(2)} (${3} hours)`);
+    const cancelFee = hourlyRate * settings.cancelHours;
+    workLogs.push({
+      description: 'Job Cancelation Fee',
+      hours: settings.cancelHours
+    });
+    console.log(`⚠️ Cancelation fee applied: $${cancelFee.toFixed(2)} (${settings.cancelHours} hours)`);
   } else {
     const work = await inquirer.prompt([
       { name: 'description', message: 'Work Description:' }
@@ -84,6 +112,7 @@ async function createInvoice() {
     };
   }
 
+  // 💸 Expenses
   const { includeExpenses } = await inquirer.prompt({
     type: 'confirm',
     name: 'includeExpenses',
@@ -126,7 +155,6 @@ async function createInvoice() {
   });
 
   const invoiceNumber = await getNextInvoiceNumber();
-
   const totalHours = workLogs.reduce((sum, log) => sum + log.hours, 0);
   const workTotal = totalHours * parseFloat(hourlyRate);
   const expenseTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
@@ -149,26 +177,27 @@ async function createInvoice() {
 
   generateInvoicePDF(invoice);
 
-const pdfPath = path.join(__dirname, '..', 'exports', `Invoice-${String(invoice.invoiceNumber).padStart(5, '0')}.pdf`);
+  const pdfPath = path.join(__dirname, '..', 'exports', `Invoice-${String(invoice.invoiceNumber).padStart(5, '0')}.pdf`);
+  const openCommand = process.platform === 'win32' ? 'start' : 'open';
+  exec(`${openCommand} "${pdfPath}"`);
 
-const { shouldEmail } = await inquirer.prompt({
-  type: 'confirm',
-  name: 'shouldEmail',
-  message: 'Do you want to email this invoice now?'
-});
+  const { shouldEmail } = await inquirer.prompt({
+    type: 'confirm',
+    name: 'shouldEmail',
+    message: 'Do you want to email this invoice now?'
+  });
 
-if (shouldEmail) {
-  try {
-    console.log('📧 Attempting to send invoice...');
-    await sendInvoiceEmail(invoice, pdfPath);
-    console.log('✅ Email sent!');
-  } catch (err) {
-    console.error('❌ Email failed:', err.message);
+  if (shouldEmail) {
+    try {
+      console.log('📧 Attempting to send invoice...');
+      await sendInvoiceEmail(invoice, pdfPath);
+      console.log('✅ Email sent!');
+    } catch (err) {
+      console.error('❌ Email failed:', err.message);
+    }
+  } else {
+    console.log('📥 Invoice ready but email not sent. You can manually send it later.');
   }
-} else {
-  console.log('📥 Invoice ready but email not sent. You can manually send it later.');
-}
-
 }
 
 // other functions (unchanged)
@@ -190,7 +219,14 @@ async function viewInvoices() {
   });
 
   console.log('');
+
+  // 👇 Pause to prevent menu glitch
+  await inquirer.prompt({
+    name: 'continue',
+    message: 'Press Enter to return to Main Menu',
+  });
 }
+
 
 async function deleteInvoice() {
   const invoices = await Invoice.find().sort({ date: -1 });
@@ -217,8 +253,194 @@ async function deleteInvoice() {
 }
 
 async function editInvoice() {
-  // remains unchanged for now — handled separately if needed
+  const invoices = await Invoice.find().sort({ date: -1 });
+
+  if (!invoices.length) {
+    console.log('⚠️ No invoices to edit.');
+    return;
+  }
+
+  const choices = invoices.map(inv => ({
+    name: `#${inv.invoiceNumber} — ${inv.client.name} — $${inv.total.toFixed(2)}`,
+    value: inv._id
+  }));
+
+  const { id } = await inquirer.prompt({
+    type: 'list',
+    name: 'id',
+    message: 'Select invoice to edit:',
+    choices
+  });
+
+  const invoice = await Invoice.findById(id);
+  const settings = loadSettings();
+
+  let editing = true;
+  while (editing) {
+    const { section } = await inquirer.prompt({
+      type: 'list',
+      name: 'section',
+      message: 'Which section do you want to edit?',
+      choices: [
+        'Client Info',
+        'Job Type (In-Person/Remote)',
+        'Was it Canceled?',
+        'Hourly Rate',
+        'Work Logs',
+        'Expenses',
+        'Notes & Subtitle',
+        '✅ Finish Editing'
+      ]
+    });
+
+    switch (section) {
+      case 'Client Info':
+        const updatedClient = await inquirer.prompt([
+          { name: 'name', message: 'Client Name:', default: invoice.client.name },
+          { name: 'business', message: 'Business Name:', default: invoice.client.business },
+          { name: 'address', message: 'Address:', default: invoice.client.address },
+          { name: 'phone', message: 'Phone:', default: invoice.client.phone },
+          { name: 'email', message: 'Email:', default: invoice.client.email }
+        ]);
+        invoice.client = updatedClient;
+        break;
+
+      case 'Job Type (In-Person/Remote)':
+        const { jobType } = await inquirer.prompt({
+          type: 'list',
+          name: 'jobType',
+          message: 'Job type:',
+          choices: ['In-Person', 'Remote']
+        });
+        invoice.hourlyRate = jobType === 'In-Person'
+          ? parseFloat(settings.hourlyInPerson)
+          : parseFloat(settings.hourlyRemote);
+        break;
+
+      case 'Was it Canceled?':
+        const { isCanceled } = await inquirer.prompt({
+          type: 'confirm',
+          name: 'isCanceled',
+          message: 'Was the job canceled?'
+        });
+
+        if (isCanceled) {
+          invoice.workLogs = [{
+            description: 'Job Cancelation Fee',
+            hours: settings.cancelHours
+          }];
+          invoice.serviceBreakdown = {}; // no breakdown needed
+        } else {
+          console.log('🧾 Clear work logs manually in next step if needed.');
+        }
+        break;
+
+      case 'Hourly Rate':
+        const { hourlyRate } = await inquirer.prompt({
+          name: 'hourlyRate',
+          message: 'New hourly rate:',
+          default: invoice.hourlyRate,
+          validate: val => !isNaN(val) && val > 0
+        });
+        invoice.hourlyRate = parseFloat(hourlyRate);
+        break;
+
+      case 'Work Logs':
+        let workLogs = [];
+        let addMore = true;
+
+        while (addMore) {
+          const work = await inquirer.prompt([
+            { name: 'description', message: 'Work Description:' },
+            {
+              name: 'hours',
+              message: 'Hours:',
+              validate: val => !isNaN(val) && val >= 0
+            }
+          ]);
+          workLogs.push({ description: work.description, hours: parseFloat(work.hours) });
+
+          const { again } = await inquirer.prompt({
+            type: 'confirm',
+            name: 'again',
+            message: 'Add another work log?'
+          });
+          addMore = again;
+        }
+
+        invoice.workLogs = workLogs;
+        break;
+
+      case 'Expenses':
+        let expenses = [];
+        let more = true;
+
+        while (more) {
+          const exp = await inquirer.prompt([
+            { name: 'description', message: 'Expense Description:' },
+            {
+              name: 'amount',
+              message: 'Amount:',
+              validate: val => !isNaN(val) && val >= 0
+            }
+          ]);
+          expenses.push({ description: exp.description, amount: parseFloat(exp.amount) });
+
+          const { again } = await inquirer.prompt({
+            type: 'confirm',
+            name: 'again',
+            message: 'Add another expense?'
+          });
+          more = again;
+        }
+
+        invoice.expenses = expenses;
+        break;
+
+      case 'Notes & Subtitle':
+        const { notes, subtitle } = await inquirer.prompt([
+          { name: 'notes', message: 'Notes:', default: invoice.notes },
+          { name: 'subtitle', message: 'Subtitle:', default: invoice.subtitle || '' }
+        ]);
+        invoice.notes = notes;
+        invoice.subtitle = subtitle;
+        break;
+
+      case '✅ Finish Editing':
+        editing = false;
+        break;
+    }
+  }
+
+  // Recalculate totals
+  const totalHours = invoice.workLogs.reduce((sum, w) => sum + w.hours, 0);
+  const workTotal = totalHours * invoice.hourlyRate;
+  const expenseTotal = invoice.expenses.reduce((sum, e) => sum + e.amount, 0);
+  invoice.total = workTotal + expenseTotal;
+
+  await invoice.save();
+  console.log(`✅ Invoice #${invoice.invoiceNumber} updated successfully!`);
+
+  generateInvoicePDF(invoice);
+
+  const pdfPath = path.join(__dirname, '..', 'exports', `Invoice-${String(invoice.invoiceNumber).padStart(5, '0')}.pdf`);
+
+  const { resend } = await inquirer.prompt({
+    type: 'confirm',
+    name: 'resend',
+    message: 'Do you want to email the updated invoice now?'
+  });
+
+  if (resend) {
+    try {
+      await sendInvoiceEmail(invoice, pdfPath);
+      console.log('📧 Email sent!');
+    } catch (err) {
+      console.error('❌ Failed to send email:', err.message);
+    }
+  }
 }
+
 
 module.exports = {
   createInvoice,

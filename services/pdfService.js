@@ -1,108 +1,83 @@
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
 
 
 function generateInvoicePDF(invoice) {
-    const doc = new PDFDocument();
-  // Your business info (customize as needed)
+  const doc = new PDFDocument();
+
   const businessName = 'We Bit Play';
-  const businessEmail = 'alexei@webitplay.com'; // or hello@webitplay.com
-  const businessPhone = '415-656-5950';         // customize
+  const businessEmail = 'alexei@webitplay.com';
+  const businessPhone = '415-656-5950';
   const website = 'www.webitplay.com';
-  
 
   const filename = `Invoice-${String(invoice.invoiceNumber).padStart(5, '0')}.pdf`;
   const outputPath = path.join(__dirname, '..', 'exports', filename);
-
   doc.pipe(fs.createWriteStream(outputPath));
 
-  // Header
-  // --- Stylized "text logo" & header ---
-doc
-.fontSize(26)
-.fillColor('#333')
-.text(businessName.toUpperCase(), 50, 50, { align: 'left' }); // TEXT LOGO
-
-if (invoice.subtitle && invoice.subtitle.trim() !== '') {
+  // 🔝 Header: Logo/Name + Invoice Meta
   doc
-    .moveDown(0.25)
-    .fontSize(14)
-    .fillColor('#666')
-    .text(invoice.subtitle, {
-      align: 'center',
-      oblique: true
-    });
-}
+    .fontSize(26)
+    .fillColor('#333')
+    .text(businessName.toUpperCase(), 50, 50);
 
+  doc
+    .fontSize(10)
+    .fillColor('black')
+    .text(`Email: ${businessEmail}`, 50, 80)
+    .text(`Phone: ${businessPhone}`, 50, 95)
+    .text(`Web: ${website}`, 50, 110);
 
-doc
-.fontSize(10)
-.fillColor('black')
-.text(`Email: ${businessEmail}`, 50, 80)
-.text(`Phone: ${businessPhone}`, 50, 95)
-.text(`Web: ${website}`, 50, 110);
+  doc
+    .fontSize(20)
+    .text(`Invoice #${invoice.invoiceNumber}`, { align: 'right' })
+    .fontSize(12)
+    .text(`Date: ${new Date(invoice.date).toDateString()}`, { align: 'right' });
 
-doc
-.fontSize(20)
-.fillColor('black')
-.text(`Invoice #${invoice.invoiceNumber}`, { align: 'right' })
-.fontSize(12)
-.text(`Date: ${new Date(invoice.date).toDateString()}`, { align: 'right' });
+  doc.moveDown();
 
-doc.moveDown();
-
-
-  // Client Info
+  // 🧾 Client Information
   doc.moveDown();
   doc.fontSize(16).text('Client Information');
-  doc.fontSize(12).text(`${invoice.client.name}`);
-  doc.text(`${invoice.client.business}`);
-  doc.text(`${invoice.client.address}`);
-  doc.text(`Phone: ${invoice.client.phone}`);
-  doc.text(`Email: ${invoice.client.email}`);
-
-  // Subtitle (now appears before Work Log)
-if (invoice.subtitle && invoice.subtitle.trim() !== '') {
-  doc.moveDown();
-  doc
-    .fontSize(14)
-    .fillColor('#444')
-    .text(invoice.subtitle, {
-      align: 'left',
-      oblique: true
-    });
-}
-
-// 🧼 Skip Breakdown Section if Canceled
-if (
-  invoice.serviceBreakdown &&
-  invoice.workLogs.some(w => w.description === 'Total Deposition Time')
-) {
-  const sb = invoice.serviceBreakdown;
-
-  doc.moveDown();
-  doc.fontSize(16).text('Service Breakdown');
   doc.fontSize(12)
-    .text(`Setup Start: ${sb.setupStart}`)
-    .text(`Deposition Start: ${sb.depoStart}`)
-    .text(`Deposition End: ${sb.depoEnd}`)
-    .text(`Breakdown End: ${sb.breakdownEnd}`)
-    .text(`Lunch Break: ${sb.lunchBreak} hours`)
-    .text(`Total Deposition Duration: ${sb.totalHours} hours`);
-}
+    .text(`${invoice.client.name}`)
+    .text(`${invoice.client.business}`)
+    .text(`${invoice.client.address}`)
+    .text(`Phone: ${invoice.client.phone}`)
+    .text(`Email: ${invoice.client.email}`);
 
+  // 🎯 Subtitle (only shown here!)
+  if (invoice.subtitle && invoice.subtitle.trim() !== '') {
+    doc.moveDown();
+    doc.fontSize(14).fillColor('#555').text(invoice.subtitle);
+    doc.fillColor('black');
+  }
 
+  // ✅ Work Log (moved above service breakdown)
+  if (invoice.workLogs.length) {
+    doc.moveDown();
+    doc.fontSize(16).text('Work Log');
+    invoice.workLogs.forEach(w => {
+      doc.fontSize(12).text(`${w.description} - ${w.hours}h`);
+    });
+  }
 
-  // Work Logs
-  doc.moveDown();
-  doc.fontSize(16).text('Work Log');
-  invoice.workLogs.forEach(w => {
-    doc.fontSize(12).text(`${w.description} - ${w.hours}h`);
-  });
+  // 🧩 Service Breakdown
+  if (invoice.serviceBreakdown && Object.keys(invoice.serviceBreakdown).length) {
+    doc.moveDown();
+    doc.fontSize(16).text('Service Breakdown');
 
-  // Expenses
+    const sb = invoice.serviceBreakdown;
+    doc.fontSize(12)
+      .text(`Setup Start: ${sb.setupStart}`)
+      .text(`Deposition Start: ${sb.depoStart}`)
+      .text(`Deposition End: ${sb.depoEnd}`)
+      .text(`Breakdown End: ${sb.breakdownEnd}`)
+      .text(`Lunch Break: ${sb.lunchBreak} hours`)
+      .text(`Total Deposition Duration: ${sb.totalHours} hours`);
+  }
+
+  // 💸 Expenses
   if (invoice.expenses.length > 0) {
     doc.moveDown();
     doc.fontSize(16).text('Expenses');
@@ -111,37 +86,19 @@ if (
     });
   }
 
-  // Notes
+  // 📝 Notes
   if (invoice.notes) {
     doc.moveDown();
     doc.fontSize(16).text('Notes');
     doc.fontSize(12).text(invoice.notes);
   }
 
-  // Total
+  // 💰 Total
   doc.moveDown();
   doc.fontSize(16).text(`Total: $${invoice.total.toFixed(2)}`, { align: 'right' });
 
-  // Footer (add here!)
-doc.fontSize(10).fillColor('gray')
-.text(
-  `Generated by ${businessName} | ${new Date().toLocaleString()}`,
-  50,
-  doc.page.height - 50,
-  { align: 'center', lineBreak: false }
-);
-
   doc.end();
   console.log(`📄 PDF generated: ${filename}`);
-  
-  // Auto-open the PDF after generation (Mac/Linux/Windows)
-exec(`open "${outputPath}"`, (err) => {
-    if (err) {
-      console.error('❌ Failed to open PDF:', err);
-    } else {
-      console.log(`📂 Opened: ${filename}`);
-    }
-  });
-  
 }
+
 module.exports = { generateInvoicePDF };

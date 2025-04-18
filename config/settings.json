@@ -1,0 +1,12 @@
+{
+  "hourlyInPerson": "40",
+  "hourlyRemote": "25",
+  "cancelHours": "3",
+  "freelancer": {
+    "name": "Alexei Dias",
+    "email": "alexeidias@gmail.com",
+    "phone": "4156565950",
+    "address": "9033 Stinson Beach Way, Elk Grove, California.",
+    "website": "www.web.com"
+  }
+}
