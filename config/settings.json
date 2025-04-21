@@ -1,5 +1,5 @@
 {
-  "hourlyInPerson": "40",
+  "hourlyInPerson": 40,
   "hourlyRemote": "25",
   "cancelHours": "3",
   "freelancer": {
@@ -8,5 +8,11 @@
     "phone": "4156565950",
     "address": "9033 Stinson Beach Way, Elk Grove, California.",
     "website": "www.web.com"
-  }
+  },
+  "services": [
+    "Videography",
+    "Web Dev Services",
+    "IT support",
+    "Immersive Virtual Tour Creation"
+  ]
 }
